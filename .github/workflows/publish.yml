@@ -1,0 +1,86 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Check package version
+        id: version
+        shell: bash
+        run: |
+          package_name="$(node -p "require('./package.json').name")"
+          package_version="$(node -p "require('./package.json').version")"
+          package_spec="${package_name}@${package_version}"
+
+          set +e
+          view_output="$(npm view "${package_spec}" version --json 2>&1)"
+          view_status=$?
+          set -e
+
+          if [ "${view_status}" -eq 0 ]; then
+            should_publish=false
+          elif printf '%s' "${view_output}" | grep -q "E404"; then
+            should_publish=true
+          else
+            printf '%s\n' "${view_output}" >&2
+            exit "${view_status}"
+          fi
+
+          echo "package_name=${package_name}" >> "${GITHUB_OUTPUT}"
+          echo "package_version=${package_version}" >> "${GITHUB_OUTPUT}"
+          echo "should_publish=${should_publish}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        if: steps.version.outputs.should_publish == 'true'
+        run: npm ci
+
+      - name: Set repository metadata
+        if: steps.version.outputs.should_publish == 'true'
+        shell: bash
+        run: |
+          npm pkg set \
+            "repository.type=git" \
+            "repository.url=https://github.com/${GITHUB_REPOSITORY}.git" \
+            "homepage=https://github.com/${GITHUB_REPOSITORY}#readme" \
+            "bugs.url=https://github.com/${GITHUB_REPOSITORY}/issues"
+
+      - name: Publish to npm
+        if: steps.version.outputs.should_publish == 'true'
+        run: npm publish
+
+      - name: Summarize release
+        shell: bash
+        run: |
+          if [ "${{ steps.version.outputs.should_publish }}" = "true" ]; then
+            echo "Published ${{ steps.version.outputs.package_name }}@${{ steps.version.outputs.package_version }}." >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "Skipped ${{ steps.version.outputs.package_name }}@${{ steps.version.outputs.package_version }} because it already exists on npm." >> "${GITHUB_STEP_SUMMARY}"
+          fi

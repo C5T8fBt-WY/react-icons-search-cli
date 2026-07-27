@@ -1,0 +1,68 @@
+{
+  "name": "react-icons-search-cli",
+  "version": "0.1.0",
+  "description": "Agent-friendly CLI for searching React Icons and exporting license-aware SVG files.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "react-icons-search-cli": "dist/cli.js",
+    "react-icons-search": "dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "tsup --dts",
+    "test": "npm run build && node --test tests/cli.test.mjs",
+    "type-check": "tsc --noEmit",
+    "validate-skill": "node scripts/validate-skill.mjs",
+    "validate-release": "node scripts/validate-release-workflow.mjs",
+    "verify": "npm run type-check && npm test && npm run validate-skill && npm run validate-release",
+    "prepack": "npm run verify"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "react-icons",
+    "cli",
+    "icons",
+    "svg",
+    "agent-skills",
+    "coding-agent"
+  ],
+  "author": "ShimaLab",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-icons": "5.7.0",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "esbuild": "^0.28.1"
+  }
+}

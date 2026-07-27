@@ -1,0 +1,4 @@
+interface:
+  display_name: "React Icons Search CLI"
+  short_description: "Find and export license-aware React icons"
+  default_prompt: "Use $react-icons-search-cli to find a suitable licensed icon and provide the exact import or SVG artifact."
