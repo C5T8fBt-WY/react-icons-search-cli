@@ -46,6 +46,14 @@
     "agent-skills",
     "coding-agent"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/C5T8fBt-WY/react-icons-search-cli.git"
+  },
+  "homepage": "https://github.com/C5T8fBt-WY/react-icons-search-cli#readme",
+  "bugs": {
+    "url": "https://github.com/C5T8fBt-WY/react-icons-search-cli/issues"
+  },
   "author": "ShimaLab",
   "license": "MIT",
   "dependencies": {
