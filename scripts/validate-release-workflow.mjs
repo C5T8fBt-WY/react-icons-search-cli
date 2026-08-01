@@ -11,7 +11,7 @@ const workflow = parse(readFileSync(workflowPath, "utf8"));
 assert.ok(workflow.on.push.branches.includes("main"));
 assert.ok(workflow.on.push["paths-ignore"].includes("**.md"));
 assert.equal(workflow.permissions.contents, "read");
-assert.equal(workflow.concurrency["cancel-in-progress"], true);
+assert.equal(workflow.concurrency["cancel-in-progress"], false);
 
 const publishJob = workflow.jobs["version-and-publish"];
 assert.match(publishJob.if, /\[skip ci\]/);
@@ -26,8 +26,8 @@ const registry = publishJob.steps.find(step => step.id === "registry");
 const updateVersion = publishJob.steps.find(step => step.name === "Update package version");
 const verify = publishJob.steps.find(step => step.name === "Verify package");
 const commit = publishJob.steps.find(step => step.name === "Commit version and push tag");
-const release = publishJob.steps.find(step => step.name === "Create GitHub Release");
 const publish = publishJob.steps.find(step => step.name === "Publish to npm");
+const release = publishJob.steps.find(step => step.name === "Create GitHub Release");
 
 assert.equal(checkout.uses, "actions/checkout@v6");
 assert.equal(checkout.with["fetch-depth"], 0);
@@ -42,7 +42,9 @@ assert.match(updateVersion.run, /npm version/);
 assert.equal(verify.run, "npm run verify");
 assert.match(commit.run, /chore\(release\):/);
 assert.match(commit.run, /git push origin "v\$\{version\}"/);
-assert.equal(release.uses, "softprops/action-gh-release@v2");
 assert.equal(publish.run, "npm publish --provenance");
+assert.match(release.run, /gh release create/);
+assert.equal(release.env.GH_TOKEN, "${{ github.token }}");
+assert.ok(publishJob.steps.indexOf(publish) < publishJob.steps.indexOf(release));
 
 process.stdout.write("npm auto-version release workflow validation passed.\n");
