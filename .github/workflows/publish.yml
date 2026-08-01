@@ -1,29 +1,34 @@
-name: Publish to npm
+name: Auto Version & Publish to npm
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
 
 permissions:
   contents: read
 
 concurrency:
-  group: npm-publish-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  publish:
-    name: Publish package
+  version-and-publish:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -32,13 +37,49 @@ jobs:
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
-      - name: Check package version
+      - name: Configure Git
+        shell: bash
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+      - name: Determine release version
         id: version
         shell: bash
         run: |
+          latest_tag="$(git tag -l 'v*' --sort=-v:refname | head -n 1)"
+
+          if [ -z "${latest_tag}" ]; then
+            current_version="$(node -p "require('./package.json').version")"
+          else
+            current_version="${latest_tag#v}"
+          fi
+
+          head_tag="$(git tag --points-at HEAD | grep '^v' | head -n 1 || true)"
+          if [ -n "${head_tag}" ]; then
+            new_version="${head_tag#v}"
+            tag_exists=true
+          else
+            new_version="$(node -e '
+              const parts = process.argv[1].split(".").map(Number);
+              if (parts.length !== 3 || parts.some(Number.isNaN)) process.exit(1);
+              console.log(`${parts[0]}.${parts[1]}.${parts[2] + 1}`);
+            ' "${current_version}")"
+            tag_exists=false
+          fi
+
+          echo "current=${current_version}" >> "${GITHUB_OUTPUT}"
+          echo "new=${new_version}" >> "${GITHUB_OUTPUT}"
+          echo "tag_exists=${tag_exists}" >> "${GITHUB_OUTPUT}"
+          echo "Latest tag: ${latest_tag:-none}"
+          echo "Release version: ${new_version}"
+
+      - name: Check npm package version
+        id: registry
+        shell: bash
+        run: |
           package_name="$(node -p "require('./package.json').name")"
-          package_version="$(node -p "require('./package.json').version")"
-          package_spec="${package_name}@${package_version}"
+          package_spec="${package_name}@${{ steps.version.outputs.new }}"
 
           set +e
           view_output="$(npm view "${package_spec}" version --json 2>&1)"
@@ -55,32 +96,48 @@ jobs:
           fi
 
           echo "package_name=${package_name}" >> "${GITHUB_OUTPUT}"
-          echo "package_version=${package_version}" >> "${GITHUB_OUTPUT}"
           echo "should_publish=${should_publish}" >> "${GITHUB_OUTPUT}"
 
+      - name: Update package version
+        if: steps.registry.outputs.should_publish == 'true' && steps.version.outputs.tag_exists == 'false'
+        run: npm version "${{ steps.version.outputs.new }}" --no-git-tag-version
+
       - name: Install dependencies
-        if: steps.version.outputs.should_publish == 'true'
+        if: steps.registry.outputs.should_publish == 'true'
         run: npm ci
 
-      - name: Set repository metadata
-        if: steps.version.outputs.should_publish == 'true'
+      - name: Verify package
+        if: steps.registry.outputs.should_publish == 'true'
+        run: npm run verify
+
+      - name: Commit version and push tag
+        if: steps.registry.outputs.should_publish == 'true' && steps.version.outputs.tag_exists == 'false'
         shell: bash
         run: |
-          npm pkg set \
-            "repository.type=git" \
-            "repository.url=https://github.com/${GITHUB_REPOSITORY}.git" \
-            "homepage=https://github.com/${GITHUB_REPOSITORY}#readme" \
-            "bugs.url=https://github.com/${GITHUB_REPOSITORY}/issues"
+          version="${{ steps.version.outputs.new }}"
+          git add package.json package-lock.json
+          git commit -m "chore(release): v${version} [skip ci]"
+          git tag -a "v${version}" -m "Release v${version}"
+          git push origin main
+          git push origin "v${version}"
+
+      - name: Create GitHub Release
+        if: steps.registry.outputs.should_publish == 'true' && steps.version.outputs.tag_exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.new }}
+          name: Release v${{ steps.version.outputs.new }}
+          generate_release_notes: true
 
       - name: Publish to npm
-        if: steps.version.outputs.should_publish == 'true'
-        run: npm publish
+        if: steps.registry.outputs.should_publish == 'true'
+        run: npm publish --provenance
 
       - name: Summarize release
         shell: bash
         run: |
-          if [ "${{ steps.version.outputs.should_publish }}" = "true" ]; then
-            echo "Published ${{ steps.version.outputs.package_name }}@${{ steps.version.outputs.package_version }}." >> "${GITHUB_STEP_SUMMARY}"
+          if [ "${{ steps.registry.outputs.should_publish }}" = "true" ]; then
+            echo "Published ${{ steps.registry.outputs.package_name }}@${{ steps.version.outputs.new }}." >> "${GITHUB_STEP_SUMMARY}"
           else
-            echo "Skipped ${{ steps.version.outputs.package_name }}@${{ steps.version.outputs.package_version }} because it already exists on npm." >> "${GITHUB_STEP_SUMMARY}"
+            echo "Skipped ${{ steps.registry.outputs.package_name }}@${{ steps.version.outputs.new }} because it already exists on npm." >> "${GITHUB_STEP_SUMMARY}"
           fi

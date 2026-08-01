@@ -8,25 +8,41 @@ const repoDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const workflowPath = path.join(repoDir, ".github", "workflows", "publish.yml");
 const workflow = parse(readFileSync(workflowPath, "utf8"));
 
-assert.ok(workflow.on.push.branches.includes("main"), "publish workflow must run on pushes to main");
+assert.ok(workflow.on.push.branches.includes("main"));
+assert.ok(workflow.on.push["paths-ignore"].includes("**.md"));
 assert.equal(workflow.permissions.contents, "read");
+assert.equal(workflow.concurrency["cancel-in-progress"], true);
 
-const publishJob = workflow.jobs.publish;
+const publishJob = workflow.jobs["version-and-publish"];
+assert.match(publishJob.if, /\[skip ci\]/);
 assert.equal(publishJob["runs-on"], "ubuntu-latest");
-assert.equal(publishJob.permissions.contents, "read");
+assert.equal(publishJob.permissions.contents, "write");
 assert.equal(publishJob.permissions["id-token"], "write");
 
 const checkout = publishJob.steps.find(step => step.uses?.startsWith("actions/checkout@"));
 const setupNode = publishJob.steps.find(step => step.uses?.startsWith("actions/setup-node@"));
-const versionCheck = publishJob.steps.find(step => step.id === "version");
-const publish = publishJob.steps.find(step => step.run === "npm publish");
+const version = publishJob.steps.find(step => step.id === "version");
+const registry = publishJob.steps.find(step => step.id === "registry");
+const updateVersion = publishJob.steps.find(step => step.name === "Update package version");
+const verify = publishJob.steps.find(step => step.name === "Verify package");
+const commit = publishJob.steps.find(step => step.name === "Commit version and push tag");
+const release = publishJob.steps.find(step => step.name === "Create GitHub Release");
+const publish = publishJob.steps.find(step => step.name === "Publish to npm");
 
 assert.equal(checkout.uses, "actions/checkout@v6");
+assert.equal(checkout.with["fetch-depth"], 0);
 assert.equal(setupNode.uses, "actions/setup-node@v6");
 assert.equal(setupNode.with["node-version"], "24");
 assert.equal(setupNode.with["package-manager-cache"], false);
-assert.match(versionCheck.run, /npm view/);
-assert.match(versionCheck.run, /E404/);
-assert.equal(publish.if, "steps.version.outputs.should_publish == 'true'");
+assert.match(version.run, /git tag -l 'v\*'/);
+assert.match(version.run, /parts\[2\] \+ 1/);
+assert.match(registry.run, /npm view/);
+assert.match(registry.run, /E404/);
+assert.match(updateVersion.run, /npm version/);
+assert.equal(verify.run, "npm run verify");
+assert.match(commit.run, /chore\(release\):/);
+assert.match(commit.run, /git push origin "v\$\{version\}"/);
+assert.equal(release.uses, "softprops/action-gh-release@v2");
+assert.equal(publish.run, "npm publish --provenance");
 
-process.stdout.write("npm release workflow validation passed.\n");
+process.stdout.write("npm auto-version release workflow validation passed.\n");
