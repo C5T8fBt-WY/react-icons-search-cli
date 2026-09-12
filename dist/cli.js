@@ -12,6 +12,7 @@ import {
 } from "./chunk-6QBFHHEO.js";
 
 // src/cli.ts
+import { createRequire } from "module";
 import { Command, Option } from "commander";
 
 // src/format.ts
@@ -127,7 +128,8 @@ function isRecord(value) {
 }
 
 // src/cli.ts
-var VERSION = "0.1.0";
+var packageJson = createRequire(import.meta.url)("../package.json");
+var VERSION = packageJson.version;
 var service = new IconService();
 var commandName = process.argv.slice(2).find((arg) => !arg.startsWith("-"));
 if (commandName !== "install") {
