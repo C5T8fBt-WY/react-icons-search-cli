@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from "node:module";
 import { Command, Option } from "commander";
 import { ICON_LIBRARIES, assertLibrary, libraryMatchesLicenses, normalizeLicenseFilters } from "./catalog.js";
 import { downloadIconsAsSvg } from "./download.js";
@@ -7,7 +8,8 @@ import { formatDetails, formatDownloads, formatExamples, formatIconList, formatL
 import { IconService } from "./icon-service.js";
 import { checkInstalledSkills, installSkills } from "./skill-install.js";
 
-const VERSION = "0.1.0";
+const packageJson = createRequire(import.meta.url)("../package.json") as { version: string };
+const VERSION = packageJson.version;
 
 type GlobalOptions = {
   format: string;

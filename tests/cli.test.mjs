@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const repoDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliPath = path.join(repoDir, "dist", "cli.js");
+const packageVersion = JSON.parse(readFileSync(path.join(repoDir, "package.json"), "utf8")).version;
 
 function runCli(args, cwd = repoDir) {
   const result = runCliRaw(args, cwd);
@@ -21,6 +22,10 @@ function runCliRaw(args, cwd = repoDir) {
     encoding: "utf8",
   });
 }
+
+test("--version matches the installed package version", () => {
+  assert.equal(runCli(["--version"]).trim(), packageVersion);
+});
 
 test("search filters results by canonical icon license", () => {
   const results = JSON.parse(runCli(["--format", "json", "search", "user", "--license", "MIT", "--limit", "5"]));
